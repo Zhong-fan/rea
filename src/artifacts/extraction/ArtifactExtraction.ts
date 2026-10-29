@@ -108,17 +108,6 @@ const extractArtifactInScope = async (
       ? undefined
       : { ...transferredSource, releaseAttempted: false };
   try {
-    if (
-      (input.inputFormat === "pe" || input.inputFormat === "elf") &&
-      !["dotnet-bundle", "pyinstaller", "godot-pck", "node-sea"].includes(
-        snapshot.manifest.root_format,
-      )
-    )
-      throw new AnalysisUnsupportedTargetError(
-        "extract_artifact",
-        input.inputPath,
-        `Artifact format has no extraction reader: ${input.inputFormat}`,
-      );
     return await materializeArtifactInventoryInScope(
       input,
       sourcePath,

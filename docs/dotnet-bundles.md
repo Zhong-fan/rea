@@ -7,6 +7,14 @@ selected through `open_binary`, the corresponding MCP tools are
 `inspect_artifact` and `extract_artifact`. No .NET installation is needed for
 inspection or extraction.
 
+For a compact inventory, call `inspect_artifact` with `detail: "summary"`,
+then use `inspect_analysis_view` with the returned `parent_evidence_id`.
+Inventory occurrence pages accept `logical_paths`, `occurrence_ids`, selected
+`fields`, `offset`, and `limit`; node pages accept batches of `artifact_ids`
+to retrieve expanded-byte digests. Include `format_metadata` and
+`source_location` when member declarations and stored extents matter. Identity
+fields survive projection, and the complete inspection Evidence stays retained.
+
 REA detects the apphost marker and its preceding header offset from PE, ELF,
 and thin Mach-O bytes, regardless of filename. An unbundled apphost's zero
 offset remains an ordinary native artifact. Universal Mach-O slice inventory

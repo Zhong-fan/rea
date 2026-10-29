@@ -19,7 +19,7 @@ import { workspaceCliTest as test } from "../support/cli/workspaceCliFixture.js"
 
 const checkProjectedMember = async (
   client: Client,
-  parentId: string,
+  expectedHostHash: string,
   memberPath: string,
   expectedHash: string,
 ) => {
@@ -31,7 +31,11 @@ const checkProjectedMember = async (
   const summary = artifactInventorySummaryViewResultSchema.parse(
     parseEvidence(reply.structuredContent).normalized_result,
   );
-  expect(summary.parent_evidence_id).toBe(parentId);
+  expect(summary.summary.manifest.root_sha256).toBe(expectedHostHash);
+  const parentId = summary.parent_evidence_id;
+  expect(parseEvidence(reply.structuredContent).evidence_links).toContain(
+    parentId,
+  );
   expect(summary.summary.source_complete).toBe(true);
   const source = { kind: "retained-evidence", evidence_id: parentId };
   const read = async (view: Record<string, unknown>) => {
@@ -54,9 +58,13 @@ const checkProjectedMember = async (
     limit: 1,
   });
   expect(occurrences.parent_evidence_id).toBe(parentId);
-  expect(occurrences.item).toHaveLength(1);
-  const member = occurrences.item[0];
-  if (member === undefined || !("occurrence_id" in member))
+  expect(occurrences.items).toHaveLength(1);
+  const member = occurrences.items[0];
+  if (
+    member === undefined ||
+    !("occurrence_id" in member) ||
+    !("artifact_id" in member)
+  )
     throw new Error("Expected a projected occurrence");
   expect(member).toMatchObject({
     logical_path: memberPath,
@@ -70,7 +78,7 @@ const checkProjectedMember = async (
     fields: ["sha256"],
     limit: 1,
   });
-  expect(nodes.item).toEqual([
+  expect(nodes.items).toEqual([
     { artifact_id: member.artifact_id, sha256: expectedHash },
   ]);
 };
@@ -196,7 +204,7 @@ for (const format of ["dotnet-bundle", "pyinstaller"] as const) {
       if (format === "dotnet-bundle")
         await checkProjectedMember(
           client,
-          parseEvidence(observed.structuredContent).evidence_id,
+          inventory.subject.root_sha256,
           memberPath,
           createHash("sha256").update(member).digest("hex"),
         );
