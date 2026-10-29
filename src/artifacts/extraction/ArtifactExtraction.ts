@@ -108,6 +108,17 @@ const extractArtifactInScope = async (
       ? undefined
       : { ...transferredSource, releaseAttempted: false };
   try {
+    if (
+      (input.inputFormat === "pe" || input.inputFormat === "elf") &&
+      !["dotnet-bundle", "pyinstaller", "godot-pck", "node-sea"].includes(
+        snapshot.manifest.root_format,
+      )
+    )
+      throw new AnalysisUnsupportedTargetError(
+        "extract_artifact",
+        input.inputPath,
+        `Artifact format has no extraction reader: ${input.inputFormat}`,
+      );
     return await materializeArtifactInventoryInScope(
       input,
       sourcePath,
@@ -605,7 +616,8 @@ const requireExtractableFormat = async (
           (await probes.godotPck()) !== undefined ||
           ((format === "elf" || format === "pe" || format === "mach-o") &&
             ((await probes.nodeSea()) !== undefined ||
-              (await probes.pyInstaller()) !== undefined));
+              (await probes.pyInstaller()) !== undefined ||
+              (await probes.dotnetBundle()) !== undefined));
         if (pack && input.expectedRootSha256 !== undefined) {
           const digest = await hashStableRootArtifactHandle(
             path,
