@@ -1,3 +1,4 @@
+import { fixedAllowanceRemediation } from "../domain/fixedAllowanceRemediation.js";
 import type {
   ArtifactAdmissionLimit,
   ArtifactLimitBoundary,
@@ -336,6 +337,19 @@ export class ArtifactReaderFailure extends Error {
     };
   }
 }
+
+/** Fixed reader input ceilings share producer-owned recovery across CLI and MCP. */
+export const artifactFixedLimitFailure = (
+  name: string,
+  maximum: number,
+  unit: string,
+): ArtifactReaderFailure => {
+  const message = `${fixedAllowanceRemediation(`${name} of ${String(maximum)} ${unit}`, "parser")} This release has no runtime override. Summary delivery and pagination do not raise this input limit.`;
+  return new ArtifactReaderFailure("limit", message, {
+    boundary: "capacity",
+    userMessage: message,
+  });
+};
 
 const combineCleanup = (
   primary: AnalysisCleanupObservation | undefined,

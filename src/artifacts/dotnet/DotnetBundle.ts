@@ -6,7 +6,10 @@ import {
   normalizeArtifactPath,
 } from "../ArtifactPaths.js";
 import { abortIfNeeded } from "../ArtifactHash.js";
-import { ArtifactReaderFailure } from "../ArtifactReader.js";
+import {
+  ArtifactReaderFailure,
+  artifactFixedLimitFailure,
+} from "../ArtifactReader.js";
 
 /** SHA-256 marker embedded by Microsoft's apphost; the preceding UInt64 is the header offset. */
 export const DOTNET_BUNDLE_SIGNATURE = Buffer.from(
@@ -98,7 +101,11 @@ export const readDotnetBundle = async (
     );
   const count = await cursor.u32();
   if (count > MAX_ENTRIES)
-    limit(".NET bundle entry count exceeds its metadata budget");
+    throw artifactFixedLimitFailure(
+      ".NET bundle entry count",
+      MAX_ENTRIES,
+      "entries",
+    );
   await cursor.string(); // Bundle ID is not an authentication or content digest.
   const configuration: { offset: number; size: number; type: number }[] = [];
   if (majorVersion >= 2) {
@@ -138,10 +145,18 @@ export const readDotnetBundle = async (
       fileSize > MAX_BUNDLE_ENTRY_BYTES ||
       compressedSize > MAX_BUNDLE_ENTRY_BYTES
     )
-      limit(`.NET bundle entry exceeds the per-file byte budget: ${path}`);
+      throw artifactFixedLimitFailure(
+        ".NET bundle member stored or expanded size",
+        MAX_BUNDLE_ENTRY_BYTES,
+        "bytes",
+      );
     expandedBytes += fileSize;
     if (expandedBytes > MAX_EXPANDED_BYTES)
-      limit(".NET bundle exceeds its aggregate expanded-byte budget");
+      throw artifactFixedLimitFailure(
+        ".NET bundle aggregate expanded size",
+        MAX_EXPANDED_BYTES,
+        "bytes",
+      );
     const storedSize = compressedSize || fileSize;
     if (offset > headerOffset || storedSize > headerOffset - offset)
       fail(`.NET bundle entry crosses the manifest or file boundary: ${path}`);
@@ -190,7 +205,11 @@ class BundleCursor {
   async take(length: number): Promise<Buffer> {
     abortIfNeeded(this.signal);
     if (this.#position - this.start + length > MAX_METADATA_BYTES)
-      limit(".NET bundle metadata exceeds its byte budget");
+      throw artifactFixedLimitFailure(
+        ".NET bundle metadata",
+        MAX_METADATA_BYTES,
+        "bytes",
+      );
     if (length > this.size - this.#position)
       fail("Truncated .NET bundle manifest");
     const cached = this.#position - this.#cacheOffset;
@@ -228,7 +247,11 @@ class BundleCursor {
   async u64(): Promise<number> {
     const value = (await this.take(8)).readBigUInt64LE();
     if (value > BigInt(Number.MAX_SAFE_INTEGER))
-      limit(".NET bundle coordinate exceeds the supported exact integer range");
+      throw artifactFixedLimitFailure(
+        ".NET bundle exact integer range",
+        Number.MAX_SAFE_INTEGER,
+        "integer units",
+      );
     return Number(value);
   }
   async string(): Promise<string> {
@@ -239,7 +262,11 @@ class BundleCursor {
       length += (byte & 127) * 2 ** shift;
       if ((byte & 128) !== 0) continue;
       if (length > MAX_PATH_BYTES)
-        limit(".NET bundle string exceeds its decoded-byte budget");
+        throw artifactFixedLimitFailure(
+          ".NET bundle decoded string",
+          MAX_PATH_BYTES,
+          "UTF-8 bytes",
+        );
       // Source failures are not encoding failures. Acquire bytes outside the
       // decoder boundary so I/O and cancellation retain their original cause.
       const bytes = await this.take(length);
@@ -262,7 +289,4 @@ class BundleCursor {
 
 const fail = (message: string): never => {
   throw new ArtifactReaderFailure("format", message);
-};
-const limit = (message: string): never => {
-  throw new ArtifactReaderFailure("limit", message);
 };

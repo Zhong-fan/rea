@@ -2,7 +2,11 @@ import { posix } from "node:path";
 
 import { logicalPathNfc } from "../domain/artifactIdentity.js";
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
-import { ArtifactReaderFailure, type ArtifactEntry } from "./ArtifactReader.js";
+import {
+  ArtifactReaderFailure,
+  artifactFixedLimitFailure,
+  type ArtifactEntry,
+} from "./ArtifactReader.js";
 
 const ABSOLUTE_DRIVE_PATH = /^[A-Za-z]:[\\/]/u;
 
@@ -103,9 +107,10 @@ export class ArtifactPathRegistry {
     if (!hasDestinationPath(kind)) return;
     const parts = path.split("/");
     if (this.budget !== undefined && parts.length > this.budget.maxParts)
-      throw new ArtifactReaderFailure(
-        "limit",
-        "Artifact path exceeds its depth budget",
+      throw artifactFixedLimitFailure(
+        "Artifact path depth",
+        this.budget.maxParts,
+        "path parts",
       );
     let node = this.#root;
     for (const [index, part] of parts.entries()) {
@@ -120,9 +125,10 @@ export class ArtifactPathRegistry {
           this.budget !== undefined &&
           this.#nodeCount >= this.budget.maxNodes
         )
-          throw new ArtifactReaderFailure(
-            "limit",
-            "Artifact path tree exceeds its node budget",
+          throw artifactFixedLimitFailure(
+            "Artifact path tree",
+            this.budget.maxNodes,
+            "path nodes",
           );
         child = { kind: undefined, children: new Map() };
         node.children.set(part, child);

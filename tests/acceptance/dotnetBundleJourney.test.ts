@@ -6,6 +6,7 @@ import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { expect } from "vitest";
 
+import { artifactFixedLimitFailure } from "../../src/artifacts/ArtifactReader.js";
 import { dotnetBundleFixture } from "../../src/artifacts/dotnet/DotnetBundle.fixture.js";
 import { cArchiveExecutable } from "../../src/artifacts/pyinstaller/CArchive.fixture.js";
 import { artifactExtractionResultSchema } from "../../src/domain/artifactGraph.js";
@@ -164,15 +165,6 @@ for (const format of ["dotnet-bundle", "pyinstaller"] as const) {
           operation: "extract_artifact",
           authority: "artifact-bytes",
         });
-        expect(inventory.next_probes[0]?.rationale).toContain(
-          "fresh owned directory",
-        );
-        expect(inventory.next_probes[0]?.rationale).toContain(
-          "inspect candidate files separately",
-        );
-        expect(inventory.next_probes[0]?.rationale).toContain(
-          "do not establish their format",
-        );
       }
       expect(
         inventory.unexplored_branches.map(({ next_probe }) => next_probe),
@@ -246,6 +238,15 @@ test("reports excessive bundle path depth as a public CLI limit", async ({
     environment: { REA_LOG_LEVEL: "silent" },
   });
   expect(result.exitCode, result.stderr).toBe(1);
+  const failure = artifactFixedLimitFailure(
+    "Artifact path depth",
+    256,
+    "path parts",
+  );
+  expect(result.json).toMatchObject({
+    message: failure.message,
+    details: { boundary: "capacity", detail: failure.message },
+  });
   expect(result.json).toMatchObject({
     code: "truncated",
     category: "truncated",

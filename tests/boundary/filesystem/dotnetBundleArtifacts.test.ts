@@ -5,6 +5,7 @@ import { deflateRawSync } from "node:zlib";
 
 import { expect, it } from "vitest";
 
+import { artifactFixedLimitFailure } from "../../../src/artifacts/ArtifactReader.js";
 import { DotnetBundleArtifactReader } from "../../../src/artifacts/DotnetBundleArtifactReader.js";
 import { ArtifactResourceScope } from "../../../src/artifacts/ArtifactResourceScope.js";
 import { extractArtifact } from "../../../src/artifacts/extraction/ArtifactExtraction.js";
@@ -21,6 +22,65 @@ import {
   DOTNET_BUNDLE_SIGNATURE,
 } from "../../../src/artifacts/dotnet/DotnetBundle.js";
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
+
+it.each([
+  {
+    name: ".NET bundle entry count",
+    maximum: 100_000,
+    unit: "entries",
+    kind: "count",
+  },
+  {
+    name: ".NET bundle decoded string",
+    maximum: 65_536,
+    unit: "UTF-8 bytes",
+    kind: "string",
+  },
+  {
+    name: ".NET bundle member stored or expanded size",
+    maximum: 536_870_912,
+    unit: "bytes",
+    kind: "member",
+  },
+  {
+    name: ".NET bundle exact integer range",
+    maximum: 9_007_199_254_740_991,
+    unit: "integer units",
+    kind: "integer",
+  },
+])(
+  "reports the effective fixed $name allowance",
+  async ({ name, maximum, unit, kind }) => {
+    const root = await createTestTempDirectory("rea-dotnet-fixed-allowance-");
+    const path = join(root, "host.exe");
+    const fixture = dotnetBundleFixture([
+      {
+        path: kind === "string" ? "a".repeat(maximum + 1) : "file",
+        bytes: Buffer.from("x"),
+        ...(kind === "member" || kind === "integer"
+          ? { declaredSize: maximum + 1 }
+          : {}),
+      },
+    ]);
+    if (kind === "count")
+      fixture.bytes.writeUInt32LE(maximum + 1, fixture.headerOffset + 8);
+    await writeFile(path, fixture.bytes);
+    const handle = await open(path, "r");
+    try {
+      const expected = artifactFixedLimitFailure(name, maximum, unit);
+      await expect(
+        readDotnetBundle(handle, fixture.bytes.length, fixture.headerOffset),
+      ).rejects.toMatchObject({
+        reason: "limit",
+        boundary: "capacity",
+        message: expected.message,
+        userMessage: expected.message,
+      });
+    } finally {
+      await handle.close();
+    }
+  },
+);
 
 it.each(["pyinstaller", "dotnet-bundle"] as const)(
   "keeps the %s outer container when a stored member is another executable container",
